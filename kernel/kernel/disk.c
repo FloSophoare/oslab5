@@ -5,7 +5,7 @@ void waitDisk(void) {
 	while((inByte(0x1F7) & 0xC0) != 0x40); 
 }
 
-void readSect(void *dst, int offset) {
+void readSect(void *dst, int offset) {  //把第offset块（offset是从0开始的）磁盘的内容读到地址为dst的内存中。
 	int i;
 	waitDisk();
 	
@@ -46,7 +46,7 @@ void diskRead (void *destBuffer, int size, int num, int offset) {
 	int quotient = offset / SECTOR_SIZE;
 	int remainder = offset % SECTOR_SIZE;
 	
-	readSect((void*)buffer, 201 + quotient + j);
+	readSect((void*)buffer, 201 + quotient + j);  //把第offset块（offset是从0开始的）磁盘的内容读到地址为dst的内存中。
 	j ++;
 	while (i < size * num) {
 		((uint8_t*)destBuffer)[i] = buffer[(remainder + i) % SECTOR_SIZE];

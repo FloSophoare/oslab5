@@ -845,7 +845,7 @@ int readInode (SuperBlock *superBlock, GroupDesc *groupDesc,
 	if (destFilePath == NULL || destFilePath[count] == 0)
 		return -1;
 
-	ret = stringChr(destFilePath, '/', &size);
+	ret = stringChr(destFilePath, '/', &size); //find the first token in string , set *size as the number of bytes before token,if not found, set *size as the length of *string
 	if (ret == -1 || size != 0) // not started with '/'
 		return -1;
 

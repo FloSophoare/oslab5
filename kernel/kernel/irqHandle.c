@@ -17,6 +17,12 @@
 #define STD_OUT 0
 #define STD_IN 1
 
+#define O_WRITE 0x01
+#define O_READ 0x02
+#define O_CREATE 0x04
+#define O_DIRECTORY 0x08
+
+
 #define SEEK_SET 0
 #define SEEK_CUR 1
 #define SEEK_END 2
@@ -232,24 +238,45 @@ void syscallOpen(struct StackFrame *sf) {
 	int fatherInodeOffset = 0;
 	int destInodeOffset = 0;
 
-	ret = readInode(&sBlock, gDesc, &destInode, &destInodeOffset, str);
+	ret = readInode(&sBlock, gDesc, &destInode, &destInodeOffset, str); // return 0 when reading rightly and -1 when not 
 
 	if (ret == 0) { // file exist
 		// TODO: Open1
 		// 错误处理，在目标文件存在的条件下，flags设置的类型与该文件实际类型不一致，返回-1
-		
+		int flag = sf->edx;
+		if ((flag& O_WRITE) && !(destInode.type & O_WRITE)){ // want to write but can't 
+			pcb[current].regs.eax = -1;
+			return;
+		}
+		if ((flag & O_READ) && !(destInode.type & O_READ)){
+			pcb[current].regs.eax = -1;
+			return;
+		}
+		if (!((flag & O_DIRECTORY) ^ (destInode.type & O_DIRECTORY))){
+			pcb[current].regs.eax = -1;
+			return;
+		}
 
 		//TODO: Open2
 		// 错误处理，判断是否已经被打开，如果已经被打开就返回-1（遍历dev和file数组）
-
+		for (i = 0; i < MAX_DEV_NUM; i++){
+			if (dev[i].state && dev[i].inodeOffset == destInodeOffset){ // Need to block current process on dev[i]?
+				pcb[current].regs.eax = -1;
+				return;
+			}
+		}
 		
 
 		//if there is no error, open the file
 		for(i=0;i<MAX_FILE_NUM;i++){
+			if (file[i].state && file[i].inodeOffset == destInodeOffset){ // opened already
+				pcb[current].regs.eax = -1;
+				return;
+			}
 			if(file[i].state==0){
 				//putChar(i+'0');
 				file[i].state = 1;
-				file[i].inodeOffset = destInodeOffset;
+				file[i].inodeOffset = destInodeOffset; //to 
 				file[i].offset = 0;
 				file[i].flags = sf->edx;
 				pcb[current].regs.eax = MAX_DEV_NUM + i;
@@ -257,8 +284,9 @@ void syscallOpen(struct StackFrame *sf) {
 			}
 		}
 		//if no free FCB, return error
-		if(i==MAX_FILE_NUM){
-			sf->eax=-1;
+		if(i==MAX_FILE_NUM){ //? This is  OK?
+			//sf->eax=-1;  // TA's version
+			pcb[current].regs.eax = -1; // I add it, 2022/5/27
 			return;
 		}
 
@@ -267,19 +295,63 @@ void syscallOpen(struct StackFrame *sf) {
 
 		//TODO: Open3
 		//错误处理，不存在这个文件，并且O_CREATE没有被设置（O_CREATE如何判断，参考上面或者下面）
+		int flag = sf->edx;
+		if (!(flag & O_CREATE)){
+			pcb[current].regs.eax = -1;
+			return;
+		}
 
-
-		if ((sf->edx >> 3) % 2 == 0) { 
+		if ((sf->edx >> 3) % 2 == 0) {   
 			//TODO: Open4        
 			// 到了这里，目标文件不存在，并且CREATE位设置为1，并且要创建的目标文件是一个常规文件
 			// Hint: readInode allocInode
-
-
+			int len = stringLen(str);
+			if (str[len-1] == '/'){ // error, want to creat normal file but name is ended with '/'
+				pcb[current].regs.eax = -1;
+				return;
+			}
+			stringChrR(str, '/', &size);
+			size++;  // stringChrR set size as index
+			char fatherPath[NAME_LENGTH << 4];
+			char filename[NAME_LENGTH];
+			stringCpy(str, fatherPath, size);
+			stringCpy(str + size, filename, len - size);
+			ret = readInode(&sBlock, gDesc, &fatherInode, &fatherInodeOffset, fatherPath); 
+			if (ret == -1){ // fatherPath don't exit, error
+				pcb[current].regs.eax = -1;
+				return;
+			}
+			ret = allocInode(&sBlock, gDesc, &fatherInode, &fatherInodeOffset, &destInode, &destInodeOffset, filename, REGULAR_TYPE);
+			if (ret == -1){ // error, alloc wrong
+				pcb[current].regs.eax = -1;
+				return;
+			}
 		}
 		else { 
 			//TODO: Open5        
 			// 目标文件不存在，并且CREATE位设置为1，并且要创建的目标文件是一个目录文件
 			// Hint: readInode allocInode
+			int len = stringLen(str);
+			if (str[len - 1] == '/') {  // creat catalogue and name ended with '/'
+				str[len-1] = 0;
+				len--;
+			}
+			stringChrR(str, '/', &size);
+			size++;  // stringChrR set size as index
+			char fatherPath[NAME_LENGTH << 4];
+			char filename[NAME_LENGTH];
+			stringCpy(str, fatherPath, size);
+			stringCpy(str + size, filename, len - size);
+			ret = readInode(&sBlock, gDesc, &fatherInode, &fatherInodeOffset, fatherPath); 
+			if (ret == -1){ // fatherPath don't exit, error
+				pcb[current].regs.eax = -1;
+				return;
+			}
+			ret = allocInode(&sBlock, gDesc, &fatherInode, &fatherInodeOffset, &destInode, &destInodeOffset, filename, DIRECTORY_TYPE);
+			if (ret == -1){ // error, alloc wrong
+				pcb[current].regs.eax = -1;
+				return;
+			}
 			
 		}
 
@@ -317,6 +389,7 @@ void syscallWrite(struct StackFrame *sf) {
 	return;
 }
 
+//no TODO
 void syscallWriteStdOut(struct StackFrame *sf) {
 	int sel = sf->ds; 
 	char *str = (char*)sf->edx;
@@ -374,7 +447,7 @@ void syscallWriteFile(struct StackFrame *sf) {
 	int remainder = file[sf->ecx - MAX_DEV_NUM].offset % sBlock.blockSize;
 
 	if(size<=0){
-		sf->eax=0;
+		sf->eax=0; // why using sf->eax somewhere but pcb[current].regs.eax in other place? 
 		return;
 	}
 
@@ -392,7 +465,7 @@ void syscallWriteFile(struct StackFrame *sf) {
 	// 使用MemCpy在内存操纵 buffer ，把内容写入 buffer
 	// 使用 writeBlock 把 buffer 的内容写回数据
 	// 这个比较麻烦，要分清楚 quotient、remainder、j 这些都是什么
-	// 
+	
 
 
 	// TODO: WriteFile2
@@ -423,6 +496,7 @@ void syscallRead(struct StackFrame *sf) {
 
 }
 
+//no TODO
 void syscallReadStdIn(struct StackFrame *sf) {
 	if (dev[STD_IN].value == 0) { // no process blocked
 		/* Blocked for I/O */
@@ -617,6 +691,8 @@ void syscallRemove(struct StackFrame *sf) {
 		return;
 	}
 }
+
+
 
 void syscallFork(struct StackFrame *sf) {
 	int i, j;

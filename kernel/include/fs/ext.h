@@ -106,7 +106,7 @@ union Inode {
 		int32_t blockCount;
 		int32_t size;  // size of this file, byte as unit
 		int32_t pointer[POINTER_NUM]; //12
-		int32_t singlyPointer;
+		int32_t singlyPointer; // what used for?
 		int32_t doublyPointer;
 		int32_t triplyPointer;
 	};
