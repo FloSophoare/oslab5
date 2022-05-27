@@ -462,9 +462,9 @@ void syscallWriteFile(struct StackFrame *sf) {
 	diskRead(&inode, sizeof(Inode), 1, file[sf->ecx - MAX_DEV_NUM].inodeOffset);
 	
 
-	int stroff=0;
+	//int stroff=0;
+	//int sz=size;
 
-	int sz=size;
 	// TODO: WriteFile1
 	// Hint: 
 	// 使用 readBlock 来读出内容到 buffer
@@ -476,26 +476,45 @@ void syscallWriteFile(struct StackFrame *sf) {
 		pcb[current].regs.eax = -1;
 		return;
 	}
-	if (sz > inode.size - file[fd].offset){
-		sz = inode.size - file[fd].offset;
+	if (size > inode.size - file[fd].offset){
+		size = inode.size - file[fd].offset;
 	}
-	int ret = readBlock(&sBlock, &inode, quotient, buffer); 
-	if (ret == -1){
-		pcb[current].regs.eax = -1;
-		return;
+	int i = 0;
+	j = remainder;
+	while (i < size){
+		if (quotient >= inode.blockCount){  // > or >= ???
+			int ret = allocBlock(&sBlock, gDesc,&inode,file[fd].inodeOffset); //when inode block is not enough
+			if (ret == -1){
+				pcb[current].regs.eax = -1;
+				return;
+			}
+		}
+		if (j != 0){ // handle the block in which remainder part is, only this part need to readBlock
+			int ret = readBlock(&sBlock, &inode, quotient, buffer); 
+			if (ret == -1){
+				pcb[current].regs.eax = -1;
+				return;
+			}
+		}
+		int cpySize = (BLOCK_SIZE - j > size - i) ? (size - i) : BLOCK_SIZE - j;
+		MemCpy(str + i, buffer + j, cpySize);
+		i += cpySize;
+		ret = writeBlock(&sBlock, &inode, quotient, buffer);
+		if (ret == -1){
+			pcb[current].regs.eax = -1;
+			return;
+		}
+		j = 0;
+		quotient++; 
 	}
-	MemCpy(str, buffer + remainder, sz);
-	file[fd].offset += sz;
-	ret = writeBlock(&sBlock, &inode, quotient, buffer);
 
 	// TODO: WriteFile2
 	// 这里把inode修改后写回磁盘（inode的size需要修改）
 	// 使用 diskWrite 函数
-	diskWrite(&inode, sizeof(Inode), 1, file[sf->ecx - MAX_DEV_NUM].inodeOffset);
+	diskWrite(&inode, sizeof(Inode), 1, file[fd].inodeOffset);
 
-
-	pcb[current].regs.eax = sz;
-	file[sf->ecx - MAX_DEV_NUM].offset += sz;
+	pcb[current].regs.eax = i;
+	file[sf->ecx - MAX_DEV_NUM].offset += i;
 	return;
 }
 
