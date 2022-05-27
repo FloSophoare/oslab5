@@ -58,7 +58,7 @@ EXT4 like filesystem
 #define SYMBOLIC_TYPE 7
 
 union SuperBlock {
-	uint8_t byte[SUPER_BLOCK_SIZE];
+	uint8_t byte[SUPER_BLOCK_SIZE];  //1024
 	struct {
 		int32_t sectorNum; // total number of sectors
 		int32_t inodeNum; // total number of inodes
@@ -74,7 +74,7 @@ union SuperBlock {
 typedef union SuperBlock SuperBlock;
 
 union GroupDesc {
-	uint8_t byte[GROUP_DESC_SIZE];
+	uint8_t byte[GROUP_DESC_SIZE]; //32
 	struct {
 		int32_t inodeBitmap; // sector as unit
 		int32_t blockBitmap; // sector as unit
@@ -87,7 +87,7 @@ union GroupDesc {
 typedef union GroupDesc GroupDesc;
 
 struct InodeBitmap {
-	uint8_t byte[INODE_BITMAP_SIZE];
+	uint8_t byte[INODE_BITMAP_SIZE]; //
 };
 
 typedef struct InodeBitmap InodeBitmap;
@@ -99,13 +99,13 @@ struct BlockBitmap {
 typedef struct BlockBitmap BlockBitmap;
 
 union Inode {
-	uint8_t byte[INODE_SIZE];
+	uint8_t byte[INODE_SIZE]; //128
 	struct {
 		int16_t type;  // further implement privilege control, i.e., drwxrwxrwx, uid, gid, others
 		int16_t linkCount;
 		int32_t blockCount;
 		int32_t size;  // size of this file, byte as unit
-		int32_t pointer[POINTER_NUM];
+		int32_t pointer[POINTER_NUM]; //12
 		int32_t singlyPointer;
 		int32_t doublyPointer;
 		int32_t triplyPointer;
@@ -115,12 +115,12 @@ union Inode {
 typedef union Inode Inode;
 
 union DirEntry {
-	uint8_t byte[DIRENTRY_SIZE];
+	uint8_t byte[DIRENTRY_SIZE]; //128
 	struct {
 		int32_t inode; // byte as unit? TODO inode index as unit
 		//int32_t size;  // size of this file, byte as unit
 		//int8_t type; // may not be necessary
-		char name[NAME_LENGTH];
+		char name[NAME_LENGTH];  //64
 	};
 };
 

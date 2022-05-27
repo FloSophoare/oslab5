@@ -58,7 +58,7 @@ int32_t syscall (int num, uint32_t a1,uint32_t a2,
 int open (char *path, int flags) {
 	return syscall(SYS_OPEN, (uint32_t)path, (uint32_t)flags, 0, 0, 0);
 }
-//syscall(eax, ecx, edx, ebx ...)
+//syscall(eax, ecx, edx, ebx, esi, edi)
 
 int write (int fd, uint8_t *buffer, int size) {
 	//DONE: Complete the function 'write' just like the function 'open'.
