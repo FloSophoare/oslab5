@@ -384,6 +384,12 @@ void syscallWrite(struct StackFrame *sf) {
 
 	// TODO: Write1        
 	// 如果要向文件里写入，在这里进行错误处理：超出文件范围或者该文件没有打开，返回-1
+	int fd = sf->ecx - MAX_DEV_NUM;
+	int size = sf->ebx;
+	if (fd < 0 || (fd >= MAX_DEV_NUM + MAX_FILE_NUM) ||file[fd].state == 0){
+		pcb[current].regs.eax = -1;
+		return;
+	}
 
 	syscallWriteFile(sf);
 	return;
@@ -465,13 +471,27 @@ void syscallWriteFile(struct StackFrame *sf) {
 	// 使用MemCpy在内存操纵 buffer ，把内容写入 buffer
 	// 使用 writeBlock 把 buffer 的内容写回数据
 	// 这个比较麻烦，要分清楚 quotient、remainder、j 这些都是什么
-	
-
+	int fd  = sf->ecx - MAX_DEV_NUM;
+	if (inode.type == DIRECTORY_TYPE || file[fd].offset >= inode.size){ // 
+		pcb[current].regs.eax = -1;
+		return;
+	}
+	if (sz > inode.size - file[fd].offset){
+		sz = inode.size - file[fd].offset;
+	}
+	int ret = readBlock(&sBlock, &inode, quotient, buffer); 
+	if (ret == -1){
+		pcb[current].regs.eax = -1;
+		return;
+	}
+	MemCpy(str, buffer + remainder, sz);
+	file[fd].offset += sz;
+	ret = writeBlock(&sBlock, &inode, quotient, buffer);
 
 	// TODO: WriteFile2
 	// 这里把inode修改后写回磁盘（inode的size需要修改）
 	// 使用 diskWrite 函数
-
+	diskWrite(&inode, sizeof(Inode), 1, file[sf->ecx - MAX_DEV_NUM].inodeOffset);
 
 
 	pcb[current].regs.eax = sz;
@@ -489,7 +509,12 @@ void syscallRead(struct StackFrame *sf) {
 	}
 	// TODO: Read1         
 	// 读取文件，在这里进行错误处理：超出文件范围或者该文件没有打开，返回-1
-
+	int fd = sf->ecx - MAX_DEV_NUM;
+	int size = sf->ebx;
+	if (fd < 0 || (fd >= MAX_DEV_NUM + MAX_FILE_NUM) ||file[fd].state == 0){
+		pcb[current].regs.eax = -1;
+		return;
+	}
 
 	syscallReadFile(sf);
 	return;
@@ -568,23 +593,38 @@ void syscallReadFile(struct StackFrame *sf) {
 	
 
 	int stroff=0;
-	int FCBindex = sf->ecx - MAX_DEV_NUM;
-	if(size + file[FCBindex].offset > inode.size){
+	int fd = sf->ecx - MAX_DEV_NUM;
+	if(size + file[fd].offset > inode.size){
 		//超出文件大小，就把size进行调整
-		size = inode.size - file[FCBindex].offset;
+		size = inode.size - file[fd].offset;
 	}
 	int sz=size;
 	// TODO: ReadFile1  
 	// 提示，使用readBlock和MemCpy，逐个block读
 	// readBlock已经封装好了读取操作。参数：超级块，inode，块索引，buffer
  	// 注意理解上面的quotient、remainder、size和j都是啥玩意儿
+	if (file[fd].offset > inode.size){
+		pcb[current].regs.eax = -1;
+		return;
+	}
+	int i = 0;  //record read num
+	j = remainder;
+	while (i < size){  // if size is big enough, it will cross many blocks!
+		if (quotient >= inode.blockCount) break; 
+		int ret = readBlock(&sBlock, &inode, quotient, buffer);
+		if (ret == -1){ // error
+			pcb[current].regs.eax = -1;
+			return;
+		}
+		int cpySize = (BLOCK_SIZE - j > size - i) ? (size - i) : BLOCK_SIZE - j;
+		MemCpy(buffer+j, str, cpySize);
+		i += cpySize;
+		j = 0;
+		quotient++;
+	}
 
-
-
-
-
-	pcb[current].regs.eax = sz;
-	file[sf->ecx - MAX_DEV_NUM].offset += sz;
+	pcb[current].regs.eax = i;
+	file[sf->ecx - MAX_DEV_NUM].offset += i;
 	return;
 }
 

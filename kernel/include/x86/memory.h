@@ -71,7 +71,7 @@ typedef struct Device Device;
 struct File { // file
 	int state;
 	int inodeOffset; // inodeOffset in filesystem, for syscall open
-	int offset; // offset from SEEK_SET
+	int offset; // offset from SEEK_SET , 文件指针的偏移量
 	int flags;
 };
 typedef struct File File;
