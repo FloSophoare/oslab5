@@ -386,7 +386,7 @@ void syscallWrite(struct StackFrame *sf) {
 	// 如果要向文件里写入，在这里进行错误处理：超出文件范围或者该文件没有打开，返回-1
 	int fd = sf->ecx - MAX_DEV_NUM;
 	int size = sf->ebx;
-	if (fd < 0 || (fd >= MAX_DEV_NUM + MAX_FILE_NUM) ||file[fd].state == 0){
+	if (fd < 0 || (fd >= MAX_FILE_NUM) ||file[fd].state == 0){
 		pcb[current].regs.eax = -1;
 		return;
 	}
@@ -530,7 +530,7 @@ void syscallRead(struct StackFrame *sf) {
 	// 读取文件，在这里进行错误处理：超出文件范围或者该文件没有打开，返回-1
 	int fd = sf->ecx - MAX_DEV_NUM;
 	int size = sf->ebx;
-	if (fd < 0 || (fd >= MAX_DEV_NUM + MAX_FILE_NUM) ||file[fd].state == 0){
+	if (fd < 0 || (fd >= MAX_FILE_NUM) ||file[fd].state == 0){  // please refer to syscallLseek
 		pcb[current].regs.eax = -1;
 		return;
 	}
@@ -663,45 +663,47 @@ void syscallLseek(struct StackFrame *sf) {
 	switch(sf->ebx) { // whence
 		case SEEK_SET:
 			// TODO: Lseek1        
-		
+			ofs = offset;
 			break;
 		case SEEK_CUR:
 			// TODO: Lseek2
-	
+			ofs = file[FCBindex].offset + offset;
 			break;
 		case SEEK_END:
 			// TODO: Lseek3
-
+			ofs = inode.size + offset;
 			break;
 		default:
 			break;
 	}
 	if(ofs<0||ofs>=inode.size){
-		sf->eax=-1;
+		sf->eax=-1; //why sf->eax but not pcb[current].regs.eax
 		return;
 	}
 	file[FCBindex].offset = ofs;
-	sf->eax=0;
+	sf->eax=0; // ??
 	return;
 }
 
 void syscallClose(struct StackFrame *sf) {
 	int i = (int)sf->ecx;
-	if (i < MAX_DEV_NUM || i >= MAX_DEV_NUM + MAX_FILE_NUM) { 
+	if (i < MAX_DEV_NUM || i >= MAX_DEV_NUM + MAX_FILE_NUM) {//maybe don't need to handle the situtaion where dev is blocked
 		// TODO: Close1        
 		// 错误，设备是不能被关闭的，或者数组越界（超过DEV和FILE数目之和），返回-1
-
+		pcb[current].regs.eax = -1;
+		return;
 	}
 	if (file[i - MAX_DEV_NUM].state == 0) { 
 		// TODO: Close2    
 		// 错误，文件根本就没有打开，返回-1
-
+		pcb[current].regs.eax = -1;
+		return;
 	}
 	//TODO: Close3
 	// 关闭文件，对file数组操作
 
-	
-	pcb[current].regs.eax = 0;
+	file[sf->ecx].state = 0;
+	pcb[current].regs.eax = 0;  // skeleton code
 	return;
 }
 
@@ -721,6 +723,18 @@ void syscallRemove(struct StackFrame *sf) {
 		// TODO: Remove1   
 		// 错误处理，考虑该文件或者它引用的文件或设备被使用的情况，这时返回-1退出
 		// 为了简化，只考虑文件本身正在被使用的情况（注意inode里面的成员，linkCount）
+		for (int i = 0; i < MAX_DEV_NUM; i++){
+			if (dev[i].state && dev[i].inodeOffset == destInodeOffset){
+				pcb[current].regs.eax = -1;
+				return;
+			}
+		}
+		for (int i = 0; i < MAX_FILE_NUM; i++){
+			if (file[i].state && file[i].inodeOffset == destInodeOffset){
+				pcb[current].regs.eax = -1;
+				return;
+			}
+		}
 
 
 		// free inode
@@ -729,13 +743,72 @@ void syscallRemove(struct StackFrame *sf) {
 			// 如果是常规文件，删除
 			// 注意错误处理，比如Type是常规文件，但路径是个目录...
 			// Hint: 用readInode，freeInode
-			
+			int len = stringLen(str);
+			if (str[len-1] == '/'){
+				pcb[current].regs.eax = -1;
+				return;
+			}
+			int myRet = stringChrR(str, '/', &size);
+			if (myRet == -1){
+				pcb[current].regs.eax = -1;
+				return;
+			}
+			char filename[NAME_LENGTH];
+			char filepath[NAME_LENGTH << 4];
+			if (size == 0){ // root
+				filepath[0] = '/';
+				filepath[1] = 0;
+			}
+			else {
+				stringCpy(str, filepath, size);
+			}
+			stringCpy(str + size + 1, filename, len - size - 1);
+			myRet = readInode(&sBlock, &gDesc,&fatherInode, &fatherInodeOffset, filepath);
+			if (myRet == -1){
+				pcb[current].regs.eax = -1;
+				return ;
+			}
+			myRet = freeInode(&sBlock, &gDesc, &fatherInode, fatherInodeOffset, &destInode, &destInodeOffset, filename, REGULAR_TYPE);
+			if (myRet == -1){
+				pcb[current].regs.eax = -1;
+				return;
+			}
+
 		}
 		else if (destInode.type == DIRECTORY_TYPE) {
 			// TODO: Remove3   
 			// 如果是目录，删除
 			// Hint: 用readInode， freeInode
-			
+			int len = stringLen(str);
+			if (str[len-1] == '/'){
+				str[len-1] = 0;
+				len--;
+			}
+			int myRet = stringChrR(str, '/', &size);
+			if (myRet == -1){
+				pcb[current].regs.eax = -1;
+				return;
+			}
+			char filename[NAME_LENGTH];
+			char filepath[NAME_LENGTH << 4];
+			if (size == 0){ // root
+				filepath[0] = '/';
+				filepath[1] = 0;
+			}
+			else {
+				stringCpy(str, filepath, size);
+			}
+			stringCpy(str + size + 1, filename, len - size - 1);
+			myRet = readInode(&sBlock, &gDesc,&fatherInode, &fatherInodeOffset, filepath);
+			if (myRet == -1){
+				pcb[current].regs.eax = -1;
+				return ;
+			}
+			myRet = freeInode(&sBlock, &gDesc, &fatherInode, fatherInodeOffset, &destInode, &destInodeOffset, filename, DIRECTORY_TYPE);
+			if (myRet == -1){
+				pcb[current].regs.eax = -1;
+				return;
+			}
 
 		}
 		if (ret == -1) {
