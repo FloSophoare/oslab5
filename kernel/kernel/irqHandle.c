@@ -227,6 +227,7 @@ void syscallHandle(struct StackFrame *sf) {
 }
 
 void syscallOpen(struct StackFrame *sf) {
+	putString("syscallOpen\n");
 	int i;
 
 	int ret = 0;
@@ -243,19 +244,25 @@ void syscallOpen(struct StackFrame *sf) {
 	if (ret == 0) { // file exist
 		// TODO: Open1
 		// 错误处理，在目标文件存在的条件下，flags设置的类型与该文件实际类型不一致，返回-1
+		putString("syscallOpen, file exist\n");
 		int flag = sf->edx;
-		if ((flag& O_WRITE) && !(destInode.type & O_WRITE)){ // want to write but can't 
+		putString("flag is ");
+		putInt(flag);
+		putChar('\n');
+		/*if ((flag& O_WRITE) && !(destInode.type & O_WRITE)){ // want to write but can't 
 			pcb[current].regs.eax = -1;
 			return;
 		}
 		if ((flag & O_READ) && !(destInode.type & O_READ)){
 			pcb[current].regs.eax = -1;
 			return;
-		}
-		if (!((flag & O_DIRECTORY) ^ (destInode.type & O_DIRECTORY))){
+		}*/
+		if ((flag & O_DIRECTORY) && (destInode.type != DIRECTORY_TYPE)){ // Is this OK?
 			pcb[current].regs.eax = -1;
+			//putString("error\n");
 			return;
 		}
+		putString("syscallOpen, file exist, open2\n");
 
 		//TODO: Open2
 		// 错误处理，判断是否已经被打开，如果已经被打开就返回-1（遍历dev和file数组）
@@ -265,6 +272,7 @@ void syscallOpen(struct StackFrame *sf) {
 				return;
 			}
 		}
+		putString("syscallOpen, file exist, open3\n");
 		
 
 		//if there is no error, open the file
@@ -274,12 +282,13 @@ void syscallOpen(struct StackFrame *sf) {
 				return;
 			}
 			if(file[i].state==0){
-				//putChar(i+'0');
+				putChar(i+'0');
 				file[i].state = 1;
 				file[i].inodeOffset = destInodeOffset; //to 
 				file[i].offset = 0;
 				file[i].flags = sf->edx;
 				pcb[current].regs.eax = MAX_DEV_NUM + i;
+				putString("syscallOpen, file exist, open4\n");
 				return;
 			}
 		}
@@ -289,6 +298,7 @@ void syscallOpen(struct StackFrame *sf) {
 			pcb[current].regs.eax = -1; // I add it, 2022/5/27
 			return;
 		}
+		putString("syscallOpen, file exist, end\n");
 
 	}
 	else { // try to create file
@@ -300,28 +310,44 @@ void syscallOpen(struct StackFrame *sf) {
 			pcb[current].regs.eax = -1;
 			return;
 		}
+		putString("syscallOpen, file doesn't exist\n");
 
 		if ((sf->edx >> 3) % 2 == 0) {   
 			//TODO: Open4        
 			// 到了这里，目标文件不存在，并且CREATE位设置为1，并且要创建的目标文件是一个常规文件
 			// Hint: readInode allocInode
+			putString("sysycallOpen, creat a regular file\n");
 			int len = stringLen(str);
 			if (str[len-1] == '/'){ // error, want to creat normal file but name is ended with '/'
 				pcb[current].regs.eax = -1;
 				return;
 			}
 			stringChrR(str, '/', &size);
-			size++;  // stringChrR set size as index
 			char fatherPath[NAME_LENGTH << 4];
 			char filename[NAME_LENGTH];
+			/*if (size == 0){
+				fatherPath[0] = '/';
+				fatherPath[1] = 0;
+			}
+			else {
+				//size++;  // stringChrR set size as index
+				stringCpy(str, fatherPath, size);  // need to remain the end '/'? 
+			}*/
+			size++;
 			stringCpy(str, fatherPath, size);
+			putString("fatherPath is ");
+			putString(fatherPath);
+			putChar('\n');
 			stringCpy(str + size, filename, len - size);
+			putString("filename is ");
+			putString(filename);
+			putChar('\n');
 			ret = readInode(&sBlock, gDesc, &fatherInode, &fatherInodeOffset, fatherPath); 
 			if (ret == -1){ // fatherPath don't exit, error
 				pcb[current].regs.eax = -1;
 				return;
 			}
-			ret = allocInode(&sBlock, gDesc, &fatherInode, &fatherInodeOffset, &destInode, &destInodeOffset, filename, REGULAR_TYPE);
+			ret = allocInode(&sBlock, gDesc, &fatherInode, fatherInodeOffset, &destInode, &destInodeOffset, filename, REGULAR_TYPE);
 			if (ret == -1){ // error, alloc wrong
 				pcb[current].regs.eax = -1;
 				return;
@@ -347,7 +373,7 @@ void syscallOpen(struct StackFrame *sf) {
 				pcb[current].regs.eax = -1;
 				return;
 			}
-			ret = allocInode(&sBlock, gDesc, &fatherInode, &fatherInodeOffset, &destInode, &destInodeOffset, filename, DIRECTORY_TYPE);
+			ret = allocInode(&sBlock, gDesc, &fatherInode, fatherInodeOffset, &destInode, &destInodeOffset, filename, DIRECTORY_TYPE);
 			if (ret == -1){ // error, alloc wrong
 				pcb[current].regs.eax = -1;
 				return;
@@ -362,7 +388,7 @@ void syscallOpen(struct StackFrame *sf) {
 				file[i].inodeOffset = destInodeOffset;
 				file[i].offset = 0;
 				file[i].flags = sf->edx;
-				pcb[current].regs.eax = MAX_DEV_NUM + i;
+				pcb[current].regs.eax = MAX_DEV_NUM + i; //????  if other function use this return value, should consider the MAX_DEV_NUM?
 				return;
 			}
 		}
@@ -374,10 +400,13 @@ void syscallOpen(struct StackFrame *sf) {
 }
 
 void syscallWrite(struct StackFrame *sf) {
+	putString("syscallWrite\n");
 	switch(sf->ecx) { // file descriptor
 		case STD_OUT:
-			if (dev[STD_OUT].state == 1)
+			if (dev[STD_OUT].state == 1){
 				syscallWriteStdOut(sf);
+				return;
+			}
 			break; // for STD_OUT
 		default:break;
 	}
@@ -385,8 +414,7 @@ void syscallWrite(struct StackFrame *sf) {
 	// TODO: Write1        
 	// 如果要向文件里写入，在这里进行错误处理：超出文件范围或者该文件没有打开，返回-1
 	int fd = sf->ecx - MAX_DEV_NUM;
-	int size = sf->ebx;
-	if (fd < 0 || (fd >= MAX_FILE_NUM) ||file[fd].state == 0){
+	if (fd < 0 || (fd >= MAX_FILE_NUM) || file[fd].state == 0){
 		pcb[current].regs.eax = -1;
 		return;
 	}
@@ -397,6 +425,7 @@ void syscallWrite(struct StackFrame *sf) {
 
 //no TODO
 void syscallWriteStdOut(struct StackFrame *sf) {
+	putString("syscallWriteStdOut\n");
 	int sel = sf->ds; 
 	char *str = (char*)sf->edx;
 	int size = sf->ebx;
@@ -439,10 +468,13 @@ void syscallWriteStdOut(struct StackFrame *sf) {
 }
 
 void syscallWriteFile(struct StackFrame *sf) {
+	//putString("syscallWriteFile\n");
 	if (file[sf->ecx - MAX_DEV_NUM].flags % 2 == 0) { // if O_WRITE is not set
 		pcb[current].regs.eax = -1;
+		putString("syscallWrite, no set WRITE\n");
 		return;
 	}
+	putString("syscallWrite, sel WRITE\n");
 
 	int j = 0;
 	int baseAddr = (current + 1) * 0x100000; // base address of user process
@@ -453,10 +485,14 @@ void syscallWriteFile(struct StackFrame *sf) {
 	int remainder = file[sf->ecx - MAX_DEV_NUM].offset % sBlock.blockSize;
 
 	if(size<=0){
-		sf->eax=0; // why using sf->eax somewhere but pcb[current].regs.eax in other place? 
+		//sf->eax=0; // why using sf->eax somewhere but pcb[current].regs.eax in other place? 
+		pcb[current].regs.eax = -1; // TA use sf->eax = 0, why is it 0? should I modify it? 2022/5/30?
+		putString("syscallWrite, size <= 0\n");
 		return;
 	}
 
+	putString("syscallWrite, size = ");
+	putInt(size);
 	//先读出inode
 	Inode inode;
 	diskRead(&inode, sizeof(Inode), 1, file[sf->ecx - MAX_DEV_NUM].inodeOffset);
@@ -472,6 +508,8 @@ void syscallWriteFile(struct StackFrame *sf) {
 	// 使用 writeBlock 把 buffer 的内容写回数据
 	// 这个比较麻烦，要分清楚 quotient、remainder、j 这些都是什么
 	int fd  = sf->ecx - MAX_DEV_NUM;
+	putString("syscallWrite, fd = ");
+	putInt(fd);
 	if (inode.type == DIRECTORY_TYPE || file[fd].offset >= inode.size){ // 
 		pcb[current].regs.eax = -1;
 		return;
@@ -499,7 +537,7 @@ void syscallWriteFile(struct StackFrame *sf) {
 		int cpySize = (BLOCK_SIZE - j > size - i) ? (size - i) : BLOCK_SIZE - j;
 		MemCpy(str + i, buffer + j, cpySize);
 		i += cpySize;
-		ret = writeBlock(&sBlock, &inode, quotient, buffer);
+		int ret = writeBlock(&sBlock, &inode, quotient, buffer);
 		if (ret == -1){
 			pcb[current].regs.eax = -1;
 			return;
@@ -519,6 +557,7 @@ void syscallWriteFile(struct StackFrame *sf) {
 }
 
 void syscallRead(struct StackFrame *sf) {
+	putString("syscallRead\n");
 	switch(sf->ecx) { // file descriptor
 		case STD_IN:
 			if (dev[STD_IN].state == 1)
@@ -529,7 +568,6 @@ void syscallRead(struct StackFrame *sf) {
 	// TODO: Read1         
 	// 读取文件，在这里进行错误处理：超出文件范围或者该文件没有打开，返回-1
 	int fd = sf->ecx - MAX_DEV_NUM;
-	int size = sf->ebx;
 	if (fd < 0 || (fd >= MAX_FILE_NUM) ||file[fd].state == 0){  // please refer to syscallLseek
 		pcb[current].regs.eax = -1;
 		return;
@@ -540,8 +578,8 @@ void syscallRead(struct StackFrame *sf) {
 
 }
 
-//no TODO
 void syscallReadStdIn(struct StackFrame *sf) {
+	putString("syscallReadStdIn\n");
 	if (dev[STD_IN].value == 0) { // no process blocked
 		/* Blocked for I/O */
 		dev[STD_IN].value --;
@@ -587,6 +625,7 @@ void syscallReadStdIn(struct StackFrame *sf) {
 }
 
 void syscallReadFile(struct StackFrame *sf) {
+	putString("syscallReadFile\n");
 	if ((file[sf->ecx - MAX_DEV_NUM].flags >> 1) % 2 == 0) { // if O_READ is not set
 		pcb[current].regs.eax = -1;
 		return;
@@ -611,13 +650,13 @@ void syscallReadFile(struct StackFrame *sf) {
 	}
 	
 
-	int stroff=0;
+	//int stroff=0;
 	int fd = sf->ecx - MAX_DEV_NUM;
 	if(size + file[fd].offset > inode.size){
 		//超出文件大小，就把size进行调整
 		size = inode.size - file[fd].offset;
 	}
-	int sz=size;
+	//int sz=size;
 	// TODO: ReadFile1  
 	// 提示，使用readBlock和MemCpy，逐个block读
 	// readBlock已经封装好了读取操作。参数：超级块，inode，块索引，buffer
@@ -648,6 +687,7 @@ void syscallReadFile(struct StackFrame *sf) {
 }
 
 void syscallLseek(struct StackFrame *sf) {
+	putString("syscallLseek\n");
 	int offset = (int)sf->edx;
 	Inode inode;
 	
@@ -671,21 +711,26 @@ void syscallLseek(struct StackFrame *sf) {
 			break;
 		case SEEK_END:
 			// TODO: Lseek3
-			ofs = inode.size + offset;
+			ofs = inode.size -1 + offset;  // This is OK?
 			break;
 		default:
 			break;
 	}
 	if(ofs<0||ofs>=inode.size){
-		sf->eax=-1; //why sf->eax but not pcb[current].regs.eax
+		//sf->eax=-1; //why sf->eax but not pcb[current].regs.eax
+		pcb[current].regs.eax = -1;
 		return;
 	}
+	putString("ofs is ");
+	putInt(ofs);
 	file[FCBindex].offset = ofs;
-	sf->eax=0; // ??
+	//sf->eax=0; // ??
+	pcb[current].regs.eax = 0;
 	return;
 }
 
 void syscallClose(struct StackFrame *sf) {
+	putString("syscallClose\n");
 	int i = (int)sf->ecx;
 	if (i < MAX_DEV_NUM || i >= MAX_DEV_NUM + MAX_FILE_NUM) {//maybe don't need to handle the situtaion where dev is blocked
 		// TODO: Close1        
@@ -708,7 +753,7 @@ void syscallClose(struct StackFrame *sf) {
 }
 
 void syscallRemove(struct StackFrame *sf) {
-
+	putString("syscallRead\n");
 	int ret = 0;
 	int size = 0;
 	int baseAddr = (current + 1) * 0x100000; // base address of user process
@@ -763,12 +808,12 @@ void syscallRemove(struct StackFrame *sf) {
 				stringCpy(str, filepath, size);
 			}
 			stringCpy(str + size + 1, filename, len - size - 1);
-			myRet = readInode(&sBlock, &gDesc,&fatherInode, &fatherInodeOffset, filepath);
+			myRet = readInode(&sBlock, gDesc,&fatherInode, &fatherInodeOffset, filepath);
 			if (myRet == -1){
 				pcb[current].regs.eax = -1;
 				return ;
 			}
-			myRet = freeInode(&sBlock, &gDesc, &fatherInode, fatherInodeOffset, &destInode, &destInodeOffset, filename, REGULAR_TYPE);
+			myRet = freeInode(&sBlock, gDesc, &fatherInode, fatherInodeOffset, &destInode, &destInodeOffset, filename, REGULAR_TYPE);
 			if (myRet == -1){
 				pcb[current].regs.eax = -1;
 				return;
@@ -799,12 +844,12 @@ void syscallRemove(struct StackFrame *sf) {
 				stringCpy(str, filepath, size);
 			}
 			stringCpy(str + size + 1, filename, len - size - 1);
-			myRet = readInode(&sBlock, &gDesc,&fatherInode, &fatherInodeOffset, filepath);
+			myRet = readInode(&sBlock, gDesc,&fatherInode, &fatherInodeOffset, filepath);
 			if (myRet == -1){
 				pcb[current].regs.eax = -1;
 				return ;
 			}
-			myRet = freeInode(&sBlock, &gDesc, &fatherInode, fatherInodeOffset, &destInode, &destInodeOffset, filename, DIRECTORY_TYPE);
+			myRet = freeInode(&sBlock, gDesc, &fatherInode, fatherInodeOffset, &destInode, &destInodeOffset, filename, DIRECTORY_TYPE);
 			if (myRet == -1){
 				pcb[current].regs.eax = -1;
 				return;
