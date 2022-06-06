@@ -1,9 +1,15 @@
 CC = gcc
 LD = ld
 
-CFLAGS = -m32 -march=i386 -static \
+#CFLAGS = -m32 -march=i386 -static \
 	 -fno-builtin -fno-stack-protector -fno-omit-frame-pointer \
 	 -Wall -Werror -O0 -I../lib
+
+
+CFLAGS = -m32 -march=i386 -static \
+	 -fno-builtin -fno-stack-protector -fno-omit-frame-pointer \
+	 -Wall -O0 -I../lib
+
 LDFLAGS = -m elf_i386
 
 UCFILES = $(shell find ./ -name "*.c")
